@@ -1,0 +1,17 @@
+{
+  "info": {
+    "year": "2017",
+    "version": "",
+    "description": "",
+    "contributor": "",
+    "url": "https://github.org",
+    "date_created": null
+  },
+  "licenses": [{
+    "id": 1,
+    "name": " Labelme License",
+    "url": ""}],
+  "images": [],
+  "annotations": [],
+  "categories": []
+}
