@@ -1,2 +1,7 @@
 .idea
 __pycache__
+coco_annot\coco\annotations\*
+coco_annot\coco\images\train2017\*
+coco_annot\coco\images\val2017\*
+raw_data\labelme\annotations\*
+raw_data\labelme\images\*

@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 from time import gmtime, strftime
 from shutil import copyfile, rmtree
+from PIL import Image
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--img_dir", type=str, default="raw_data/labelme/images/",
@@ -61,88 +62,6 @@ def coco_temp():
     return temp
 
 
-def temp_add_categories(coco):
-    with open("coco_annot/coco/classes_name.json") as f:
-        category = json.load(f)
-    for i, name in enumerate(category):
-        category_coco = {
-            "id": i + 1,
-            "name": name,
-            "supercategory": "None",
-        }
-        coco["categories"].append(category_coco)
-
-
-def coco_add_img(coco, img_id, img_path, width, height):
-    create_time = os.path.getmtime(img_path)
-    create_time = strftime("%Y-%m-%d %H:%M:%S", gmtime(create_time))
-    file_name = os.path.basename(img_path)
-
-    image = {
-        "id": img_id,
-        "width": width,
-        "height": height,
-        "file_name": file_name,
-        "license": 1,
-        "flickr_url": img_path,
-        "coco_url": img_path,
-        "date_captured": create_time,
-    }
-    coco["images"].append(image)
-
-
-def coco_add_ant(coco, ant_id, img_id, shapes):
-    for obj in shapes:
-        ant_id += 1
-        points = np.asarray(obj["points"])
-        annotation = {
-            "id": ant_id,
-            "image_id": img_id,
-            "category_id": find_class(coco["categories"], obj["label"]),
-            "segmentation": points.flatten().tolist(),
-            "area": poly_area(points),
-            "bbox": get_bbox(points),
-            "iscrowd": 1,
-        }
-        coco["annotations"].append(annotation)
-    return ant_id
-
-
-def make_instance(coco, data):
-    ant_id = 0
-    for i, paths in enumerate(data):
-        with open(paths[1], 'r') as f:
-            ant_json = json.load(f)
-
-        coco_add_img(coco, i+1, cpy_file, ant_json["imageWidth"], ant_json["imageHeight"])
-        ant_id = coco_add_ant(coco, ant_id, i+1, ant_json["shapes"])
-
-
-def make_caption(coco, data):
-    img_id = 0
-    ant_id = 0
-    for i, paths in enumerate(data):
-        with open(paths[1], 'r') as f:
-            ant_json = json.load(f)
-
-        coco_add_img(coco, img_id, cpy_file, ant_json["imageWidth"], ant_json["imageHeight"])
-        for obj in ant_json["shapes"]:
-            ant_id += 1
-            annotation = {
-                "id": ant_id,
-                "image_id": img_id,
-                "caption": "labeled by {}. label name is {}".format(coco["info"]["contributor"], obj["label"]),
-            }
-            coco["annotations"].append(annotation)
-
-
-def find_class(classes, aim):
-    for cls in classes:
-        if cls["name"] == aim:
-            return cls["id"]
-    return -1
-
-
 def poly_area(poly):
     x = poly[:, 0]
     y = poly[:, 1]
@@ -164,66 +83,112 @@ def coco_img_name(x):
     for _ in range(8 - len(str_x)):
         str_x = '0' + str_x
     return str_x
+# ------------------------------------------------------------------
+
+
+def id_name(_id, ext_name):
+    name = str(_id)
+    for _ in range(8 - len(name)):
+        name = '0' + name
+    name += "." + ext_name
+    return name
+
+
+def find_class(classes, aim):
+    for cls in classes:
+        if cls["name"] == aim:
+            return cls["id"]
+    raise KeyError("class_name \"{}\" not found. please check classes_name.json".format(aim))
+
+
+def temp_add_categories(coco):
+    with open("coco_annot/coco/classes_name.json") as f:
+        category = json.load(f)
+    for i, name in enumerate(category):
+        category_coco = {
+            "id": i + 1,
+            "name": name,
+            "supercategory": "None",
+        }
+        coco["categories"].append(category_coco)
+
+
+def coco_add_img(coco, file_name):
+    create_time = os.path.getmtime(file_name)
+    create_time = strftime("%Y-%m-%d %H:%M:%S", gmtime(create_time))
+    img = Image.open(file_name)
+
+    image = {
+        "id": len(coco["images"]) + 1,
+        "width": img.width,
+        "height": img.height,
+        "file_name": os.path.basename(file_name),
+        "license": 1,
+        "flickr_url": file_name,
+        "coco_url": file_name,
+        "date_captured": create_time,
+    }
+    coco["images"].append(image)
+
+
+def coco_add_ant(coco, ant):
+    points = np.asarray(ant["points"])
+    annotation = {
+        "id": len(coco["annotations"]) + 1,
+        "image_id": len(coco["images"]),
+        "category_id": find_class(coco["categories"], ant["label"]),
+        "segmentation": [points.flatten().tolist()],
+        "area": poly_area(points),
+        "bbox": get_bbox(points),
+        "iscrowd": 0,
+    }
+    coco["annotations"].append(annotation)
+
+
+def coco_add_instance(coco, img_path, ant_path):
+    coco_add_img(coco, img_path)
+
+    with open(ant_path) as f:
+        ants_json = json.load(f)
+
+    for ant in ants_json["shapes"]:
+        coco_add_ant(coco, ant)
 
 
 if __name__ == '__main__':
     check_args()
     directory_checking()
 
-    imgs_path = glob.glob(os.path.join(args.img_dir, "*"))
-    data_index = np.arange(len(imgs_path))
+    img_files = glob.glob(os.path.join(args.img_dir, "*"))
+    data_index = np.arange(len(img_files))
     np.random.shuffle(data_index)
-    train_index = data_index[int(len(imgs_path) * args.val_percent):].tolist()
-    valid_index = data_index[:int(len(imgs_path) * args.val_percent)].tolist()
-
-    train_data = list()
-    for i, num in enumerate(train_index):
-        img_basename = os.path.basename(imgs_path[num])
-        ant_basename = img_basename.split('.')[0] + ".json"
-
-        cpy_file = coco_img_name(i+1) + '.' + img_basename.split('.')[1]
-        cpy_file = os.path.join(args.save_dir, "images/train2017/" + cpy_file)
-
-        copyfile(imgs_path[num], cpy_file)
-
-        train_data.append([cpy_file, os.path.join(args.ant_dir, ant_basename)])
-
-    valid_data = list()
-    for i, num in enumerate(valid_index):
-        img_basename = os.path.basename(imgs_path[num])
-        ant_basename = img_basename.split('.')[0] + ".json"
-
-        cpy_file = coco_img_name(i + 1) + '.' + img_basename.split('.')[1]
-        cpy_file = os.path.join(args.save_dir, "images/val2017/" + cpy_file)
-
-        copyfile(imgs_path[num], cpy_file)
-
-        valid_data.append([cpy_file, os.path.join(args.ant_dir, ant_basename)])
+    train_index = data_index[int(len(img_files) * args.val_percent):].tolist()
+    valid_index = data_index[:int(len(img_files) * args.val_percent)].tolist()
 
     print("creating coco instance train...")
     instance_train = coco_temp()
     temp_add_categories(instance_train)
-    make_instance(instance_train, train_data)
+    for i in train_index:
+        img_file = img_files[i]
+        ant_file = os.path.join(args.ant_dir, os.path.basename(img_file).split('.')[0] + ".json")
+        cpy_name = id_name(len(instance_train["images"]) + 1, img_file.split('.')[1])
+        cpy_file = os.path.join(args.save_dir, "images/train2017/" + cpy_name)
+        copyfile(img_file, cpy_file)
+        coco_add_instance(instance_train, cpy_file, ant_file)
 
     print("creating coco instance valid...")
     instance_val = coco_temp()
     temp_add_categories(instance_val)
-    make_instance(instance_val, valid_data)
-
-    print("creating coco caption train...")
-    caption_train = coco_temp()
-    make_caption(caption_train, train_data)
-
-    print("creating coco caption valid...")
-    caption_val = coco_temp()
-    make_caption(caption_val, valid_data)
+    for i in valid_index:
+        img_file = img_files[i]
+        ant_file = os.path.join(args.ant_dir, os.path.basename(img_file).split('.')[0] + ".json")
+        cpy_name = id_name(len(instance_val["images"]) + 1, img_file.split('.')[1])
+        cpy_file = os.path.join(args.save_dir, "images/val2017/" + cpy_name)
+        copyfile(img_file, cpy_file)
+        coco_add_instance(instance_val, cpy_file, ant_file)
 
     print("saving...")
-    with open(os.path.join(args.save_dir, "annotations/instance_train2017.json"), 'w') as f:
+    with open(os.path.join(args.save_dir, "annotations/instances_train2017.json"), 'w') as f:
         json.dump(instance_train, f, indent=4, sort_keys=True)
-    with open(os.path.join(args.save_dir, "annotations/instance_val2017.json"), 'w') as f:
+    with open(os.path.join(args.save_dir, "annotations/instances_val2017.json"), 'w') as f:
         json.dump(instance_val, f, indent=4, sort_keys=True)
-    with open(os.path.join(args.save_dir, "annotations/caption_train2017.json"), 'w') as f:
-        json.dump(caption_train, f, indent=4, sort_keys=True)
-    with open(os.path.join(args.save_dir, "annotations/caption_val2017.json"), 'w') as f:
-        json.dump(caption_val, f, indent=4, sort_keys=True)

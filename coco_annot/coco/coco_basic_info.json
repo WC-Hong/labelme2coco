@@ -1,17 +1,1 @@
-{
-  "info": {
-    "year": "2017",
-    "version": "",
-    "description": "",
-    "contributor": "",
-    "url": "https://github.org",
-    "date_created": null
-  },
-  "licenses": [{
-    "id": 1,
-    "name": " Labelme License",
-    "url": ""}],
-  "images": [],
-  "annotations": [],
-  "categories": []
-}
+{"info": {"year": "2017", "version": "0.0.1", "description": "this data set is about rail annotation", "contributor": "Aries Hong", "url": "https://github.org", "date_created": null}, "licenses": [{"id": 1, "name": "Aries Hong Labelme License", "url": ""}], "images": [], "annotations": [], "categories": []}
